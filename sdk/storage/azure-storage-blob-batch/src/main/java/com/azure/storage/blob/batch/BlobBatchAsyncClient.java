@@ -204,6 +204,26 @@ public final class BlobBatchAsyncClient {
         }
     }
 
+    /**
+     * Delete multiple blobs in a single request to the service.
+     *
+     * @param containerName Container name of the blobs to delete.
+     * @param blobNames Names of the blobs to delete.
+     * @param deleteOptions The deletion option for all blobs.
+     * @return The status of each delete operation.
+     * @throws BlobStorageException If the batch request is malformed.
+     * @throws BlobBatchStorageException If any of the delete operations fail.
+     */
+    @ServiceMethod(returns = ReturnType.COLLECTION)
+    public PagedFlux<Response<Void>> deleteBlobsOfSameContainer(String containerName, List<String> blobNames, DeleteSnapshotsOptionType deleteOptions) {
+        try {
+            return new PagedFlux<>(
+                () -> withContext(context -> submitDeleteBlobsBatch(containerName, blobNames, deleteOptions, context)));
+        } catch (RuntimeException ex) {
+            return pagedFluxError(LOGGER, ex);
+        }
+    }
+
     PagedFlux<Response<Void>> deleteBlobsWithTimeout(List<String> blobUrls, DeleteSnapshotsOptionType deleteOptions,
         Duration timeout, Context context) {
         return new PagedFlux<>(() ->
@@ -213,6 +233,11 @@ public final class BlobBatchAsyncClient {
     private Mono<PagedResponse<Response<Void>>> submitDeleteBlobsBatch(List<String> blobUrls,
         DeleteSnapshotsOptionType deleteOptions, Context context) {
         return submitBatchHelper(blobUrls, (batch, blobUrl) -> batch.deleteBlob(blobUrl, deleteOptions, null), context);
+    }
+
+    private Mono<PagedResponse<Response<Void>>> submitDeleteBlobsBatch(String containerName, List<String> blobNames,
+        DeleteSnapshotsOptionType deleteOptions, Context context) {
+        return submitBatchHelper(blobNames, (batch ,blobName) -> batch.deleteBlob(containerName, blobName, deleteOptions, null), context);
     }
 
     /**
@@ -264,12 +289,12 @@ public final class BlobBatchAsyncClient {
      * This helper method creates the batch request, applies the requested batching operation to each blob, sends the
      * request to the service, and returns the responses.
      */
-    private <T> Mono<PagedResponse<Response<T>>> submitBatchHelper(List<String> blobUrls,
+    private <T> Mono<PagedResponse<Response<T>>> submitBatchHelper(List<String> blobPaths,
         BiFunction<BlobBatch, String, Response<T>> generator, Context context) {
         BlobBatch batch = getBlobBatch();
 
         List<Response<T>> responses = new ArrayList<>();
-        for (String blobUrl : blobUrls) {
+        for (String blobUrl : blobPaths) {
             responses.add(generator.apply(batch, blobUrl));
         }
 
